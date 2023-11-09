@@ -17,7 +17,7 @@ mod actions {
     use starknet::{ContractAddress, get_caller_address};
     use debug::PrintTrait;
     use dojo_examples::models::{
-        GAME_DATA_KEY, GameData, Direction, MovesQueue, Vec2, Position, RPSType, PlayerID,
+        GAME_DATA_KEY, GameData, Direction, Vec2, Position, RPSType, Energy, PlayerID,
     };
     use super::IActions;
 
@@ -72,8 +72,8 @@ mod tests {
     use dojo::test_utils::{spawn_test_world, deploy_contract};
 
     // import models
-    use dojo_examples::models::{position, rps_type, moves_queue, player_id, energy};
-    use dojo_examples::models::{Position, RPSType, Energy, Direction, PlayerID, MovesQueue, Vec2};
+    use dojo_examples::models::{position, rps_type, player_id, energy};
+    use dojo_examples::models::{Position, RPSType, Energy, Direction, PlayerID, Vec2};
 
     // import actions
     use super::{actions, IActionsDispatcher, IActionsDispatcherTrait};
@@ -90,7 +90,6 @@ mod tests {
             energy::TEST_CLASS_HASH,
             position::TEST_CLASS_HASH,
             rps_type::TEST_CLASS_HASH,
-            moves_queue::TEST_CLASS_HASH,
             player_id::TEST_CLASS_HASH
         ];
 
@@ -128,15 +127,5 @@ mod tests {
     fn moves() {
         let (caller, world, actions) = init();
 
-        actions.queue_moves(Direction::Up, Direction::Left, Direction::Up);
-
-        let moves = get!(world, caller, (MovesQueue));
-
-        let dir_up: felt252 = Direction::Up.into();
-        let dir_left: felt252 = Direction::Left.into();
-
-        assert(dir_up == moves.m1.into(), 'incorrect move m1');
-        assert(dir_left == moves.m2.into(), 'incorrect move m2');
-        assert(dir_up == moves.m3.into(), 'incorrect move m3');
     }
 }
