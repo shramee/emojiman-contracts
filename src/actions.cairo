@@ -12,13 +12,21 @@ trait IActions<TContractState> {
 mod actions {
     use starknet::{ContractAddress, get_caller_address};
     use debug::PrintTrait;
-    use dojo_examples::models::{GAME_DATA_KEY, GameData, Direction, MovesQueue, Vec2, Player};
+    use dojo_examples::models::{
+        GAME_DATA_KEY, GameData, Direction, MovesQueue, PlayerID, Vec2, Player
+    };
     use super::IActions;
+
+    fn assign_player_id(world: IWorldDispatcher, id: u8, mut player: Player) {
+        player.id = id;
+        set!(world, (player));
+        set!(world, (PlayerID { player: player.player, id }));
+    }
 
     // impl: implement functions specified in trait
     #[external(v0)]
     impl ActionsImpl of IActions<ContractState> {
-        // ContractState is defined by system decorator expansion
+        // Spawns the player on to the map
         fn spawn(self: @ContractState, rps: u8) -> u8 {
             let world = self.world_dispatcher.read();
             let player = get_caller_address();
@@ -29,10 +37,11 @@ mod actions {
             let id = game_data.number_of_players; // id starts at 1
             set!(world, (game_data));
 
-            set!(world, (Player { id, player, position, energy: 100, rps }));
-
+            assign_player_id(world, id, Player { id, player, position, energy: 100, rps });
             id
         }
+
+        // Queues move for player to be processed later
         fn queue_moves(self: @ContractState, m1: Direction, m2: Direction, m3: Direction) {
             let world = self.world_dispatcher.read();
             let player = get_caller_address();
@@ -54,8 +63,8 @@ mod tests {
     use dojo::test_utils::{spawn_test_world, deploy_contract};
 
     // import models
-    use dojo_examples::models::{player};
-    use dojo_examples::models::{Player, Direction, MovesQueue, Vec2};
+    use dojo_examples::models::{player, moves_queue, player_id};
+    use dojo_examples::models::{Player, Direction, PlayerID, MovesQueue, Vec2};
 
     // import actions
     use super::{actions, IActionsDispatcher, IActionsDispatcherTrait};
@@ -68,7 +77,9 @@ mod tests {
         // This sets caller for called contract functions.
         starknet::testing::set_contract_address(caller);
         // models
-        let mut models = array![];
+        let mut models = array![
+            player::TEST_CLASS_HASH, moves_queue::TEST_CLASS_HASH, player_id::TEST_CLASS_HASH
+        ];
 
         // deploy world with models
         let world = spawn_test_world(models);
@@ -87,7 +98,11 @@ mod tests {
 
         actions.spawn('r');
 
-        let player = get!(world, 1, (Player));
+        // Get player ID
+        let player_id = get!(world, caller, (PlayerID)).id;
+
+        // Get player from id
+        let player = get!(world, player_id, (Player));
         assert(1 == player.id, 'incorrect id');
         assert(caller == player.player, 'incorrect player');
         assert(10 == player.position.x, 'incorrect position.x');
