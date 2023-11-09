@@ -21,6 +21,8 @@ impl DirectionIntoFelt252 of Into<Direction, felt252> {
     }
 }
 
+const GAME_DATA_KEY: felt252 = 'game';
+
 #[derive(Copy, Drop, Serde, Introspect)]
 struct Vec2 {
     x: u32,
@@ -28,8 +30,26 @@ struct Vec2 {
 }
 
 #[derive(Model, Copy, Drop, Serde)]
-struct Position {
+struct Player {
+    #[key]
+    id: u8,
+    player: ContractAddress,
+    position: Vec2,
+    energy: u8,
+    rps: u8, // one character
+}
+
+#[derive(Model, Copy, Drop, Serde)]
+struct PlayerID {
     #[key]
     player: ContractAddress,
-    vec: Vec2,
+    id: u8,
+}
+
+#[derive(Model, Copy, Drop, Serde)]
+struct GameData {
+    #[key]
+    game: felt252, // Always 'game'
+    number_of_players: u8,
+    available_ids: u256, // Packed u8s?
 }
