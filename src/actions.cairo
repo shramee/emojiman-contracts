@@ -8,7 +8,8 @@ const MOVE_ENERGY_COST: u8 = 1;
 #[starknet::interface]
 trait IActions<TContractState> {
     fn spawn(self: @TContractState, rps: u8) -> u8;
-    fn queue_moves(self: @TContractState, m1: Direction, m2: Direction, m3: Direction);
+    fn move(self: @TContractState, dir: Direction);
+    fn tick(self: @TContractState);
 }
 
 // dojo decorator
@@ -19,7 +20,8 @@ mod actions {
     use dojo_examples::models::{
         GAME_DATA_KEY, GameData, Direction, Vec2, Position, RPSType, Energy, PlayerID,
     };
-    use super::IActions;
+    use dojo_examples::utils::next_position;
+    use super::{INITIAL_ENERGY, RENEWED_ENERGY, MOVE_ENERGY_COST, IActions};
 
     fn assign_player_id(world: IWorldDispatcher, id: u8, mut player: ContractAddress) {
         set!(world, (PlayerID { player, id }));
@@ -51,11 +53,27 @@ mod actions {
         }
 
         // Queues move for player to be processed later
-        fn queue_moves(self: @ContractState, m1: Direction, m2: Direction, m3: Direction) {
+        fn move(self: @ContractState, dir: Direction) {
             let world = self.world_dispatcher.read();
             let player = get_caller_address();
-            set!(world, (MovesQueue { player, m1, m2, m3 }));
+
+            // player id
+            let id = get!(world, player, (PlayerID)).id;
+
+            let (pos, energy) = get!(world, id, (Position, Energy));
+
+            assert(energy.amt > MOVE_ENERGY_COST, 'Not enough energy');
+
+            let pos = next_position(pos, dir);
+
+            set!(world, (pos, Energy { id, amt: energy.amt - MOVE_ENERGY_COST },));
         }
+
+        // Process player move queues
+        // @TODO do the killing
+        // @TODO update player entities
+        // @TODO keep score
+        fn tick(self: @ContractState) {}
     }
 }
 
@@ -127,5 +145,24 @@ mod tests {
     fn moves() {
         let (caller, world, actions) = init();
 
+        actions.spawn('r');
+
+        // Get player ID
+        let player_id = get!(world, caller, (PlayerID)).id;
+        assert(1 == player_id, 'incorrect id');
+
+        let (spawn_pos, spawn_energy) = get!(world, player_id, (Position, Energy));
+
+        actions.move(Direction::Up);
+        // Get player from id
+        let (pos, energy) = get!(world, player_id, (Position, Energy));
+
+        energy.amt.print();
+        MOVE_ENERGY_COST.print();
+        spawn_energy.amt.print();
+
+        assert(energy.amt == spawn_energy.amt - MOVE_ENERGY_COST, 'incorrect energy');
+        assert(spawn_pos.x == pos.x, 'incorrect position.x');
+        assert(spawn_pos.y - 1 == pos.y, 'incorrect position.y');
     }
 }
