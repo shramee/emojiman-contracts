@@ -1,5 +1,9 @@
 use dojo_examples::models::{Direction};
 
+const INITIAL_ENERGY: u8 = 3;
+const RENEWED_ENERGY: u8 = 3;
+const MOVE_ENERGY_COST: u8 = 1;
+
 // define the interface
 #[starknet::interface]
 trait IActions<TContractState> {
@@ -37,7 +41,10 @@ mod actions {
             let x = 10; // Pick randomly
             let y = 10; // Pick randomly
 
-            set!(world, (Position { id, x, y }, RPSType { id, rps }));
+            set!(
+                world,
+                (Position { id, x, y }, RPSType { id, rps }, Energy { id, amt: INITIAL_ENERGY },)
+            );
 
             assign_player_id(world, id, player);
             id
@@ -65,12 +72,12 @@ mod tests {
     use dojo::test_utils::{spawn_test_world, deploy_contract};
 
     // import models
-    use dojo_examples::models::{position, rps_type, moves_queue, player_id};
-    use dojo_examples::models::{Position, RPSType, Direction, PlayerID, MovesQueue, Vec2};
+    use dojo_examples::models::{position, rps_type, moves_queue, player_id, energy};
+    use dojo_examples::models::{Position, RPSType, Energy, Direction, PlayerID, MovesQueue, Vec2};
 
     // import actions
     use super::{actions, IActionsDispatcher, IActionsDispatcherTrait};
-
+    use super::{INITIAL_ENERGY, RENEWED_ENERGY, MOVE_ENERGY_COST};
 
     fn init() -> (ContractAddress, IWorldDispatcher, IActionsDispatcher) {
         let caller = starknet::contract_address_const::<'jon'>();
@@ -80,6 +87,7 @@ mod tests {
         starknet::testing::set_contract_address(caller);
         // models
         let mut models = array![
+            energy::TEST_CLASS_HASH,
             position::TEST_CLASS_HASH,
             rps_type::TEST_CLASS_HASH,
             moves_queue::TEST_CLASS_HASH,
@@ -108,10 +116,11 @@ mod tests {
         assert(1 == player_id, 'incorrect id');
 
         // Get player from id
-        let (position, rps_type) = get!(world, player_id, (Position, RPSType));
+        let (position, rps_type, energy) = get!(world, player_id, (Position, RPSType, Energy));
         assert(0 < position.x, 'incorrect position.x');
         assert(0 < position.y, 'incorrect position.y');
         assert('r' == rps_type.rps, 'incorrect rps');
+        assert(INITIAL_ENERGY == energy.amt, 'incorrect energy');
     }
 
     #[test]

@@ -45,6 +45,13 @@ struct RPSType {
 }
 
 #[derive(Model, Copy, Drop, Serde)]
+struct Energy {
+    #[key]
+    id: u8,
+    amt: u8,
+}
+
+#[derive(Model, Copy, Drop, Serde)]
 struct PlayerID {
     #[key]
     player: ContractAddress,
