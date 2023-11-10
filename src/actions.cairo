@@ -25,8 +25,10 @@ mod actions {
     use super::{INITIAL_ENERGY, RENEWED_ENERGY, MOVE_ENERGY_COST, IActions};
 
     // region player id assignment
-    fn assign_player_id(world: IWorldDispatcher, id: u8, mut player: ContractAddress) {
+    fn assign_player_id(world: IWorldDispatcher, num_players: u8, player: ContractAddress) -> u8 {
+        let id = num_players;
         set!(world, (PlayerID { player, id }, PlayerAddress { player, id }));
+        return id;
     }
 
     fn clear_player_id(world: IWorldDispatcher, id: u8, mut player: ContractAddress) {
@@ -55,10 +57,26 @@ mod actions {
     }
     // endregion player position
 
-    fn assign_player_components(world: IWorldDispatcher, id: u8, x: u8, y: u8, rps: u8, amt: u8) {
+    // region game ops
+    fn player_position_and_energy(world: IWorldDispatcher, id: u8, x: u8, y: u8, amt: u8) {
         assign_player_position(world, id, x, y);
-        set!(world, (RPSType { id, rps }, Energy { id, amt: INITIAL_ENERGY },));
+        set!(world, (Energy { id, amt },));
     }
+
+    // if not occupied returns true
+    // if occupied
+    // panics if players are of same type (move cancelled)
+    // if the player dies returns false
+    // if the player kills the other player returns true
+    fn player_can_move_to(world: IWorldDispatcher, id: u8, x: u8, y: u8) -> bool {
+        let occupied = player_at_position(world, x, y);
+        if occupied == 0 {
+            return true;
+        }
+        let occupant_type = get!(world, occupied, (RPSType)).rps;
+        false
+    }
+    // endregion game ops
 
     // impl: implement functions specified in trait
     #[external(v0)]
@@ -70,14 +88,17 @@ mod actions {
 
             let mut game_data = get!(world, GAME_DATA_KEY, (GameData));
             game_data.number_of_players += 1;
-            let id = game_data.number_of_players; // id starts at 1
+            let number_of_players = game_data.number_of_players; // id starts at 1
             set!(world, (game_data));
+
+            let id = assign_player_id(world, number_of_players, player);
+
+            assert(rps == 'r' || rps == 'p' || rps == 's', 'invalid rps type');
+            set!(world, (RPSType { id, rps }));
 
             let x = 10; // Pick randomly
             let y = 10; // Pick randomly
-
-            assign_player_id(world, id, player);
-            assign_player_components(world, id, x, y, rps, INITIAL_ENERGY);
+            player_position_and_energy(world, id, x, y, INITIAL_ENERGY);
         }
 
         // Queues move for player to be processed later
@@ -96,8 +117,10 @@ mod actions {
             clear_player_at_position(world, pos);
 
             let Position{id, x, y } = next_position(pos, dir);
-            assign_player_position(world, id, x, y);
-            set!(world, (Energy { id, amt: energy.amt - MOVE_ENERGY_COST },));
+
+            if player_can_move_to(world, id, x, y) {
+                player_position_and_energy(world, id, x, y, energy.amt - MOVE_ENERGY_COST);
+            }
         }
 
         // Process player move queues
