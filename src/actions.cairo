@@ -1,4 +1,4 @@
-use dojo_examples::models::{Direction};
+use dojo_examples::models::{Direction, RPS};
 
 const INITIAL_ENERGY: u8 = 3;
 const RENEWED_ENERGY: u8 = 3;
@@ -7,7 +7,7 @@ const MOVE_ENERGY_COST: u8 = 1;
 // define the interface
 #[starknet::interface]
 trait IActions<TContractState> {
-    fn spawn(self: @TContractState, rps: u8);
+    fn spawn(self: @TContractState, rps: RPS);
     fn move(self: @TContractState, dir: Direction);
     fn tick(self: @TContractState);
 }
@@ -18,8 +18,8 @@ mod actions {
     use starknet::{ContractAddress, get_caller_address};
     use debug::PrintTrait;
     use dojo_examples::models::{
-        GAME_DATA_KEY, GameData, Direction, Vec2, Position, PlayerAtPosition, RPSType, Energy,
-        PlayerID, PlayerAddress
+        GAME_DATA_KEY, GameData, Direction, RPS, RPSPrintImpl, Vec2, Position, PlayerAtPosition,
+        RPSType, Energy, PlayerID, PlayerAddress
     };
     use dojo_examples::utils::next_position;
     use super::{INITIAL_ENERGY, RENEWED_ENERGY, MOVE_ENERGY_COST, IActions};
@@ -41,11 +41,6 @@ mod actions {
     // endregion player id assignment
 
     // region player position
-    fn assign_player_position(world: IWorldDispatcher, id: u8, x: u8, y: u8) {
-        // Set no player at position
-        set!(world, (PlayerAtPosition { x, y, id }, Position { x, y, id }));
-    }
-
     fn clear_player_at_position(world: IWorldDispatcher, pos: Position) {
         let Position{id, x, y } = pos;
         // Set no player at position
@@ -59,21 +54,33 @@ mod actions {
 
     // region game ops
     fn player_position_and_energy(world: IWorldDispatcher, id: u8, x: u8, y: u8, amt: u8) {
-        assign_player_position(world, id, x, y);
-        set!(world, (Energy { id, amt },));
+        set!(world, (PlayerAtPosition { x, y, id }, Position { x, y, id }, Energy { id, amt },));
     }
 
-    // if not occupied returns true
-    // if occupied
+    fn player_died(world: IWorldDispatcher, id: u8) {
+        let pos = get!(world, id, (Position));
+        clear_player_at_position(world, pos);
+        let Position{id, x, y } = pos;
+
+        set!(world, (Position { id, x: 0, y: 0 }, Energy { id, amt: 0 },));
+    }
+
     // panics if players are of same type (move cancelled)
     // if the player dies returns false
     // if the player kills the other player returns true
-    fn player_can_move_to(world: IWorldDispatcher, id: u8, x: u8, y: u8) -> bool {
-        let occupied = player_at_position(world, x, y);
-        if occupied == 0 {
+    fn encounter(world: IWorldDispatcher, player: u8, adversary: u8) -> bool {
+        let adv_type = get!(world, adversary, (RPSType)).rps;
+        let ply_type = get!(world, adversary, (RPSType)).rps;
+        encounter_type(ply_type, adv_type)
+    }
+
+    fn encounter_type(ply_type: RPS, adv_type: RPS) -> bool {
+        assert(adv_type != ply_type, 'occupied by same type');
+        if (ply_type == RPS::Rock && adv_type == RPS::Scissors)
+            || (ply_type == RPS::Paper && adv_type == RPS::Rock)
+            || (ply_type == RPS::Scissors && adv_type == RPS::Paper) {
             return true;
         }
-        let occupant_type = get!(world, occupied, (RPSType)).rps;
         false
     }
     // endregion game ops
@@ -82,7 +89,7 @@ mod actions {
     #[external(v0)]
     impl ActionsImpl of IActions<ContractState> {
         // Spawns the player on to the map
-        fn spawn(self: @ContractState, rps: u8) {
+        fn spawn(self: @ContractState, rps: RPS) {
             let world = self.world_dispatcher.read();
             let player = get_caller_address();
 
@@ -93,7 +100,6 @@ mod actions {
 
             let id = assign_player_id(world, number_of_players, player);
 
-            assert(rps == 'r' || rps == 'p' || rps == 's', 'invalid rps type');
             set!(world, (RPSType { id, rps }));
 
             let x = 10; // Pick randomly
@@ -118,8 +124,15 @@ mod actions {
 
             let Position{id, x, y } = next_position(pos, dir);
 
-            if player_can_move_to(world, id, x, y) {
+            let adversary = player_at_position(world, x, y);
+            if 0 == adversary {
+                // Empty cell, move
                 player_position_and_energy(world, id, x, y, energy.amt - MOVE_ENERGY_COST);
+            } else {
+                if encounter(world, id, adversary) {
+                    // Move the player
+                    player_position_and_energy(world, id, x, y, energy.amt - MOVE_ENERGY_COST);
+                }
             }
         }
 
@@ -148,7 +161,8 @@ mod tests {
         position, player_at_position, rps_type, energy, player_id, player_address,
     };
     use dojo_examples::models::{
-        Position, RPSType, Energy, Direction, Vec2, PlayerAtPosition, PlayerID, PlayerAddress,
+        Position, RPSType, Energy, Direction, RPS, RPSPrintImpl, Vec2, PlayerAtPosition, PlayerID,
+        PlayerAddress,
     };
 
     // import actions
@@ -186,7 +200,7 @@ mod tests {
     fn spawn_test() {
         let (caller, world, actions) = init();
 
-        actions.spawn('r');
+        actions.spawn(RPS::Rock);
 
         // Get player ID
         let player_id = get!(world, caller, (PlayerID)).id;
@@ -196,7 +210,7 @@ mod tests {
         let (position, rps_type, energy) = get!(world, player_id, (Position, RPSType, Energy));
         assert(0 < position.x, 'incorrect position.x');
         assert(0 < position.y, 'incorrect position.y');
-        assert('r' == rps_type.rps, 'incorrect rps');
+        assert(RPS::Rock == rps_type.rps, 'incorrect rps');
         assert(INITIAL_ENERGY == energy.amt, 'incorrect energy');
     }
 
@@ -205,7 +219,7 @@ mod tests {
     fn moves_test() {
         let (caller, world, actions) = init();
 
-        actions.spawn('r');
+        actions.spawn(RPS::Rock);
 
         // Get player ID
         let player_id = get!(world, caller, (PlayerID)).id;
@@ -227,7 +241,7 @@ mod tests {
     fn player_at_position_test() {
         let (caller, world, actions_) = init();
 
-        actions_.spawn('r');
+        actions_.spawn(RPS::Rock);
 
         // Get player ID
         let player_id = get!(world, caller, (PlayerID)).id;
@@ -249,5 +263,40 @@ mod tests {
 
         // Player should be at new position
         assert(actions::player_at_position(world, x, y) == player_id, 'player should be at pos');
+    }
+
+    use RPS::{Rock, Paper, Scissors};
+
+    #[test]
+    #[available_gas(30000000)]
+    fn encounter_test() {
+        let (caller, world, actions_) = init();
+        assert(false == actions::encounter_type(RPS::Rock, RPS::Paper), 'R v P should lose');
+        assert(true == actions::encounter_type(RPS::Rock, RPS::Scissors), 'R v S should win');
+        assert(false == actions::encounter_type(RPS::Scissors, RPS::Rock), 'S v R should lose');
+        assert(true == actions::encounter_type(RPS::Scissors, RPS::Paper), 'S v P should win');
+        assert(false == actions::encounter_type(RPS::Paper, RPS::Scissors), 'P v S should lose');
+        assert(true == actions::encounter_type(RPS::Paper, RPS::Rock), 'P v R should win');
+    }
+
+    #[test]
+    #[available_gas(2000000)]
+    #[should_panic()]
+    fn encounter_rock_tie_panic() {
+        actions::encounter_type(RPS::Rock, RPS::Rock);
+    }
+
+    #[test]
+    #[available_gas(2000000)]
+    #[should_panic()]
+    fn encounter_paper_tie_panic() {
+        actions::encounter_type(RPS::Paper, RPS::Paper);
+    }
+
+    #[test]
+    #[available_gas(2000000)]
+    #[should_panic()]
+    fn encounter_scissor_tie_panic() {
+        actions::encounter_type(RPS::Scissors, RPS::Scissors);
     }
 }
