@@ -1,4 +1,4 @@
-use dojo_examples::models::{Direction};
+use emojiman::models::{Direction};
 
 const INITIAL_ENERGY: u8 = 255;
 const RENEWED_ENERGY: u8 = 3;
@@ -21,11 +21,11 @@ trait IActions<TContractState> {
 mod actions {
     use starknet::{ContractAddress, get_caller_address};
     use debug::PrintTrait;
-    use dojo_examples::models::{
+    use emojiman::models::{
         GAME_DATA_KEY, GameData, Direction, Vec2, Position, PlayerAtPosition, RPSType, Energy,
         PlayerID, PlayerAddress
     };
-    use dojo_examples::utils::next_position;
+    use emojiman::utils::next_position;
     use super::{
         INITIAL_ENERGY, RENEWED_ENERGY, MOVE_ENERGY_COST, X_RANGE, Y_RANGE, X_ORIGIN, Y_ORIGIN,
         IActions
@@ -193,10 +193,10 @@ mod tests {
     use dojo::test_utils::{spawn_test_world, deploy_contract};
 
     // import models
-    use dojo_examples::models::{
+    use emojiman::models::{
         position, player_at_position, rps_type, energy, player_id, player_address,
     };
-    use dojo_examples::models::{
+    use emojiman::models::{
         Position, RPSType, Energy, Direction, Vec2, PlayerAtPosition, PlayerID, PlayerAddress,
     };
 
